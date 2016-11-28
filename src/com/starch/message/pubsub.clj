@@ -8,46 +8,47 @@
 
 (def api-url (str "https://" api-domain "/"))
 
-(def commands-ch (chan (buffer 256)))
+(def ^:private events-ch (chan (buffer 256)))
 
-(def resource-ch (chan (buffer 256)))
-
-(def events-ch (chan (buffer 256)))
+(def ^:private commands-ch (chan (buffer 256)))
 
 (defn- publish [ch message]
   (put! ch message))
 
-(def publish-command
-  (partial publish commands-ch))
-
 (def publish-event
   (partial publish events-ch))
 
-(defn resource-listener
-  [timeout-ms]
-  (let [tc (timeout timeout-ms)]
-    (when-let [[resource ch] (alts!! [resource-ch tc])]
-      (condp = ch
-        resource-ch resource
-        tc (Exception. (str "Timed out for resource after " timeout-ms "ms"))))))
+(def publish-command
+  (partial publish commands-ch))
+
+
+; support processing commands
+
+(def ^:private commands-mult (mult commands-ch))
 
 (defn command-listener
-  [xform]
-  (let [xform-ch (chan (buffer 256) xform)
-        mc (mult commands-ch)
-        listener (tap mc xform-ch)]
+  [transformer]
+  (let [command-events-ch (chan (buffer 256) transformer)
+        _ (tap commands-mult command-events-ch)]
     (go-loop []
-      (when-let [xformed (<! listener)]
-        (when (>! resource-ch xformed)
-          (println "published " (:origin xformed))))
+      (when-let [command-event (<! command-events-ch)]
+        (>! events-ch command-event))
       (recur))))
 
-(defn event-listener
-  [xform out-ch]
-  (let [data-ch (chan 1 xform)
-        mc (mult events-ch)
-        listener (tap mc data-ch)]
-    (go-loop []
-      (when-let [event (<! listener)]
-        (>! out-ch event)
-        (recur)))))
+
+; support finding the event as a result of command
+
+(def ^:private events-mult (mult events-ch))
+
+(defn command-event-listener
+  [command-id predicate timeout-ms]
+  (let [predicate-ch (chan 1 predicate)
+        _ (tap events-mult predicate-ch)
+        tc (timeout timeout-ms)]
+    (when-let [[event ch] (alts!! [predicate-ch tc])]
+      (untap events-mult predicate-ch)
+      (condp = ch
+        predicate-ch event
+        tc (Exception. (str "Timed out for event from command id " command-id " after " timeout-ms "ms"))))))
+
+

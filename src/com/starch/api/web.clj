@@ -1,17 +1,12 @@
 (ns com.starch.api.web
   (:require [yada.yada :as yada]
             [environ.core :refer [env]]
-            [com.starch.message.pubsub :as ps])
+            [com.starch.message.pubsub :as ps]
+            [com.starch.data.storage :as ds])
   (:import (java.util UUID Date)
            (clojure.lang PersistentArrayMap)))
 
 (def version (UUID/randomUUID))
-
-(def system-origin {:type "system"})
-
-;(def transfer-post-data {:amount          1337
-;                         :customer-source (UUID/randomUUID)
-;                         :customer-target (UUID/randomUUID)})
 
 (defn new-transfer-command
   [post-data]
@@ -24,38 +19,9 @@
                :requestId (UUID/randomUUID)}
    :context   post-data
    :resource  {:id   (:customer-source post-data)
-               :href (str ps/api-url "customers/" (:customer-source post-data))}
-   })
+               :href (str ps/api-url "customers/" (:customer-source post-data))}})
 
-(defn create-transfer-event [transfer-resource]
-  {:id            (UUID/randomUUID)
-   :relationships (:relationships transfer-resource)
-   :time-stamp    (new Date)
-   :version       version
-   :origin        system-origin
-   :resource      {:id   (:id transfer-resource),
-                   :href (str ps/api-url "transfers/" (:id transfer-resource))}})
-
-(defn publish-initiated-transfer-event
-  [transfer-resource]
-  (ps/publish-event (merge (create-transfer-event transfer-resource)
-                           {:event "transferInitiated"}))
-  transfer-resource)
-
-(defn create-expired-transfer-event
-  [ctx]
-  (let [transfer-resource (get-in ctx [:response :body])]
-    (ps/publish-event (merge (create-transfer-event transfer-resource)
-                             {:event "transferClaimExpired"})))
-  ctx)
-
-(defn create-failed-transfer-event
-  [ctx]
-  (let [transfer-resource (get-in ctx [:response :body])]
-    (ps/publish-event (merge (create-transfer-event transfer-resource)
-                             {:event   "transferFailed"
-                              :context {:reason "INSUFFICIENT_FUNDS"}})))
-  ctx)
+; make more functional!!
 
 (defn process-command
   [ctx]
@@ -71,17 +37,20 @@
     (ps/publish-command command)
 
     ; wait for the command to complete / timeout
-    (let [resource (ps/resource-listener 200)]
-      (println "process-command - return type" (type resource))
+    (let [id (:id command)
+          event (ps/command-event-listener
+                  id (filter #(= id (get-in % [:origin :id]))) 200)]
 
-      (condp instance? resource
+      (condp instance? event
 
         ; it worked, async publish the initiated event
-        PersistentArrayMap (publish-initiated-transfer-event resource)
+        PersistentArrayMap (when-let [transfer-id (get-in event [:resource :id])]
+                             (ds/lookup-transfer transfer-id))
 
-        Exception (:cause resource)
+        ; fail, create a small map of the error
+        Exception {:fail (:cause event) :posted-data post-data}
 
-        resource))))
+        "process-command - unmatched instance type"))))
 
 (def transfer-parameters-resource
   (yada/resource
