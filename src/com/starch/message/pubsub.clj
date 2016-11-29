@@ -4,22 +4,13 @@
                                         go go-loop mult promise-chan
                                         put! take! timeout tap untap]]))
 
-(def api-domain "transfers-api.starch.com")
+(def ^:private api-domain "transfers-api.starch.com")
 
-(def api-url (str "https://" api-domain "/"))
+(def ^:private api-url (str "https://" api-domain "/"))
 
 (def ^:private events-ch (chan (buffer 256)))
 
 (def ^:private commands-ch (chan (buffer 256)))
-
-(defn- publish [ch message]
-  (put! ch message))
-
-(def publish-event
-  (partial publish events-ch))
-
-(def publish-command
-  (partial publish commands-ch))
 
 
 ; support processing commands
@@ -51,4 +42,12 @@
         predicate-ch event
         tc (Exception. (str "Timed out for event from command id " command-id " after " timeout-ms "ms"))))))
 
+
+; support publishing commands and events
+
+(defn- publish [ch message]
+  (put! ch message))
+
+(def publish-event (partial publish events-ch))
+(def publish-command (partial publish commands-ch))
 

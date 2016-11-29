@@ -6,9 +6,9 @@
   (:import (java.util UUID Date)
            (clojure.lang PersistentArrayMap)))
 
-(def version (UUID/randomUUID))
+(def ^:private version (UUID/randomUUID))
 
-(defn new-transfer-command
+(defn- new-transfer-command
   [post-data]
   {
    :id        (UUID/randomUUID)
@@ -23,7 +23,7 @@
 
 ; make more functional!!
 
-(defn process-command
+(defn- process-command
   [ctx]
   (let [cust-src (get-in ctx [:parameters :query :src])
         cust-tgt (get-in ctx [:parameters :query :tgt])
@@ -52,7 +52,7 @@
 
         "process-command - unmatched instance type"))))
 
-(def transfer-parameters-resource
+(def ^:private transfer-parameters-resource
   (yada/resource
     {:methods
      {:get

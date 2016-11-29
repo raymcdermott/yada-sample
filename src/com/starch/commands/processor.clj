@@ -3,9 +3,9 @@
             [com.starch.data.storage :as ds])
   (:import (java.util UUID Date)))
 
-(def system-origin {:type "system"})
+(def ^:private system-origin {:type "system"})
 
-(def version (UUID/randomUUID))
+(def ^:private version (UUID/randomUUID))
 
 (defn- create-transfer-event [transfer-resource]
   {:id            (UUID/randomUUID)
