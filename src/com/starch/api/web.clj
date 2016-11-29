@@ -21,9 +21,11 @@
    :resource  {:id   (:customer-source post-data)
                :href (str ps/api-url "customers/" (:customer-source post-data))}})
 
+
+
 ; make more functional!!
 
-(defn- process-command
+(defn- transfer-event-source
   [ctx]
   (let [cust-src (get-in ctx [:parameters :query :src])
         cust-tgt (get-in ctx [:parameters :query :tgt])
@@ -60,7 +62,7 @@
                             :tgt String
                             :amt Double}}
        :produces   "application/json"
-       :response   process-command}}}))
+       :response   transfer-event-source}}}))
 
 
 ; so, how to create the resource per request
