@@ -4,66 +4,73 @@
             [com.starch.message.pubsub :as ps]
             [com.starch.data.storage :as ds])
   (:import (java.util UUID Date)
-           (clojure.lang PersistentArrayMap)))
+           (clojure.lang PersistentArrayMap ExceptionInfo)))
 
-(def ^:private version (UUID/randomUUID))
+; make more functional / reduce boiler plate!!
 
-(defn- new-transfer-command
+(def default-timeout 200)
+
+
+; publish on POST (standard lifecycle)
+
+; obtain RESOURCE before 'create response'
+
+(defn process-command
+  [command resource-locater]
+
+  ; publish the command
+  (ps/publish-command command)
+
+  ; wait for the command to complete / timeout
+  (let [id (:id command)
+        event (ps/command-event-listener
+                id (filter #(= id (get-in % [:origin :id]))) default-timeout)]
+
+    (condp instance? event
+
+      ; it worked, async publish the initiated event
+      PersistentArrayMap (when-let [resource-id (get-in event [:resource :id])]
+                           (resource-locater resource-id))
+
+      ; fail and provide a diagnostics map
+      ExceptionInfo {:fail (:cause event) :posted-data (:context command) :exception event}
+
+      "process-command - unmatched instance type")))
+
+; can become a map? can be added to yada resource? yes ... and then just fix up the interceptor chain
+; after process-request-body
+
+(defn- process-transfer-command
   [post-data]
-  {
-   :id        (UUID/randomUUID)
-   :command   "transfer"
-   :timestamp (new Date)
-   :version   version
-   :origin    {:type      "api"
-               :requestId (UUID/randomUUID)}
-   :context   post-data
-   :resource  {:id   (:customer-source post-data)
-               :href (str ps/api-url "customers/" (:customer-source post-data))}})
-
-
-
-; make more functional!!
+  (let [command (ps/new-transfer-command post-data)]
+    (process-command command ds/lookup-transfer)))
 
 (defn- transfer-event-source
   [ctx]
-  (let [cust-src (get-in ctx [:parameters :query :src])
-        cust-tgt (get-in ctx [:parameters :query :tgt])
-        xfer-amt (get-in ctx [:parameters :query :amt])
-        post-data {:amount          xfer-amt
-                   :customer-source cust-src
-                   :customer-target cust-tgt}
-        command (new-transfer-command post-data)]
+  (let [form (get-in ctx [:parameters :form])
+        post-data {:amount          (:amount form)
+                   :customer-source (:customer-source form)
+                   :customer-target (:customer-target form)}]
+    (process-transfer-command post-data)))
 
-    ; publish the command
-    (ps/publish-command command)
-
-    ; wait for the command to complete / timeout
-    (let [id (:id command)
-          event (ps/command-event-listener
-                  id (filter #(= id (get-in % [:origin :id]))) 200)]
-
-      (condp instance? event
-
-        ; it worked, async publish the initiated event
-        PersistentArrayMap (when-let [transfer-id (get-in event [:resource :id])]
-                             (ds/lookup-transfer transfer-id))
-
-        ; fail, create a small map of the error
-        Exception {:fail (:cause event) :posted-data post-data}
-
-        "process-command - unmatched instance type"))))
+(def ^:private transfer-schema                              ; TODO add spec
+  {:customer-source String
+   :customer-target String
+   :amount          Double})
 
 (def ^:private transfer-parameters-resource
   (yada/resource
     {:methods
-     {:get
-      {:parameters {:query {:src String
-                            :tgt String
-                            :amt Double}}
+     {
+      :post                                                 ; TODO
+      {:parameters {:form transfer-schema}
        :produces   "application/json"
-       :response   transfer-event-source}}}))
-
+       :response   transfer-event-source}
+      :get
+      {:parameters {:query transfer-schema}
+       :produces   "application/json"
+       :response   transfer-event-source}}
+     }))
 
 ; so, how to create the resource per request
 (defn -main [& [port]]
@@ -76,5 +83,7 @@
       {:port port})))
 
 ; In the repl ... use this for interactive work
-; (def srv (-main)) ; start the server, obtain the map
-; ((:close srv))    ; shut it down
+; (def srv (-main))
+; start the server, obtain the map
+; ((:close srv))
+; shut it down

@@ -67,14 +67,25 @@
     transfer-resource))
 
 
+(defn- handle-create-transfer
+  [command]
+  (if-let [transfer-resource (process-create-transfer-command command)]
+    (create-initiated-transfer-event transfer-resource)
+    (ex-info "Cannot handle create-transfer command" {:command command})))
+
+
 ; install a stop channel to enable more interactive control
 
+(def command->function
+  {:create-new-transfer handle-create-transfer})
+
 (defn transfer-command-processor
-  []
-  ; have a predicate to decide which command to process!!
+  "Dispatch the appropriate processor for the command on the channel"
+  [function-mapping]
   (ps/command-listener (map (fn [command]
-                              (let [transfer-resource (process-create-transfer-command command)]
-                                (create-initiated-transfer-event transfer-resource))))))
+                              (if-let [handler (get command->function (:command command))]
+                                (handler command)
+                                (ex-info "Cannot map command to a handler" {:command command :map function-mapping}))))))
 
 
 
