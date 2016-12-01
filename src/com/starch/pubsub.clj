@@ -1,12 +1,10 @@
-(ns com.starch.message.pubsub
+(ns com.starch.pubsub
   (:require [environ.core :refer [env]]
             [clojure.core.async :refer [<! >! alts!! buffer chan close!
                                         go go-loop mult promise-chan
                                         put! take! timeout tap untap]])
   (:import (java.util UUID Date)
            (clojure.lang PersistentArrayMap ExceptionInfo)))
-
-(def deadline-millis (Long. (or (env :deadline-millis) 200)))
 
 (def ^:private api-domain "transfers-api.starch.com")
 
@@ -39,7 +37,7 @@
 
 (def ^:private commands-ch (chan (buffer 256)))
 
-(def ^:private stop-processing-ch (chan))
+(def ^:private stop-commands-ch (chan))
 
 
 ; support processing commands
@@ -51,14 +49,16 @@
   (let [command-events-ch (chan (buffer 256) transformer)
         _ (tap commands-mult command-events-ch)]
     (go-loop []
-      (when-let [[command-event ch] (alts!! [command-events-ch stop-processing-ch])]
+      (when-let [[command-event ch] (alts!! [command-events-ch stop-commands-ch])]
         (condp = ch
           command-events-ch (do (>! events-ch command-event)
                                 (recur))
-          stop-processing-ch (if (= :stop command-event)
-                               (do (untap commands-mult command-events-ch)
-                                   (println "Stopping command-listener"))
-                               (recur)))))))
+          stop-commands-ch (do (untap commands-mult command-events-ch)
+                               (println "Stopping command-listener")))))))
+
+; for interactive use
+(defn- stop-command-listener []
+  (put! stop-commands-ch :stop))
 
 
 ; support finding the event as a result of command
@@ -76,9 +76,6 @@
         predicate-ch event
         timeout-ch (ex-info "Timout in command-event-listener" {:command-id command-id :timeout timeout-ms})))))
 
-(defn stop-command-processor []
-  (put! stop-processing-ch :stop))
-
 ; support publishing commands and events
 
 (defn- publish [ch message]
@@ -87,9 +84,10 @@
 (def publish-event (partial publish events-ch))
 (def publish-command (partial publish commands-ch))
 
-; general sync command handler
-(defn await-command-result
-  [command resource-locater timeout-ms]
+; TODO Add Schema
+(defn sync-command-with-result
+  "General sync handler"
+  [command command-keys resource-keys resource-locater timeout-ms]
 
   ; publish the command
   (publish-command command)
@@ -97,16 +95,16 @@
   ; wait for the command to complete / timeout
   (let [id (:id command)
         event (command-event-listener
-                id (filter #(= id (get-in % [:origin :id]))) timeout-ms)]
+                id (filter #(= id (get-in % command-keys))) timeout-ms)]
 
     (condp instance? event
 
       ; it worked, async publish the initiated event
-      PersistentArrayMap (when-let [resource-id (get-in event [:resource :id])]
+      PersistentArrayMap (when-let [resource-id (get-in event resource-keys)]
                            (resource-locater resource-id))
 
       ; fail and provide a diagnostics map
       ExceptionInfo {:fail (:cause event) :posted-data (:context command) :exception event}
 
-      "process-command - unmatched instance type")))
+      (str "sync-command-with-result FAIL - unmatched instance type: " (type event)))))
 
