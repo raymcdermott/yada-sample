@@ -1,4 +1,4 @@
-(ns com.starch.data.storage)
+(ns com.starch.data-storage)
 
 (def ^:private resource-db (atom #{}))
 

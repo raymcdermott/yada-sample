@@ -1,8 +1,8 @@
-(ns com.starch.api.web
+(ns com.starch.web-api
   (:require [yada.yada :as yada]
             [environ.core :refer [env]]
-            [com.starch.message.pubsub :as ps]
-            [com.starch.data.storage :as ds])
+            [com.starch.pubsub :as ps]
+            [com.starch.data-storage :as ds])
   (:import (java.util UUID Date)
            (clojure.lang PersistentArrayMap ExceptionInfo)))
 
@@ -10,12 +10,9 @@
 
 (defn sync-command-event
   [command resource-locater]
-
-  ; publish the command
-  (ps/publish-command command)
-
-  ; wait for the command to complete / timeout
-  (ps/await-command-result command resource-locater deadline-millis))
+  (let [command-keys [:origin :id]
+        resource-keys [:resource :id]]
+    (ps/sync-command-with-result command command-keys resource-keys resource-locater deadline-millis)))
 
 (defn- initiate-transfer-command
   [post-data]
@@ -30,32 +27,37 @@
                    :customer-target (:customer-target form)}]
     (initiate-transfer-command post-data)))
 
-(def ^:private initiate-transfer-schema                              ; TODO integrate with spec
+(def ^:private initiate-transfer-schema                     ; TODO integrate with spec
   {:customer-source String
    :customer-target String
    :amount          Double})
 
-(def ^:private initiate
-  (let [resource-map {:parameters {:query initiate-transfer-schema}
-                      :produces   "application/json"
-                      :response   initiate-transfer-event-source}]
+(def ^:private initiate-transfer
+  (let [resource-method-map {:parameters {:query initiate-transfer-schema}
+                             :produces   "application/json"
+                             :response   initiate-transfer-event-source}]
     (yada/resource
       {:methods
-       {:post resource-map
-        :get  resource-map}})))
+       {:post resource-method-map
+        :get  resource-method-map}})))
 
-; so, how to create the resource per request
+
+
+; For running on servers
+
 (defn -main [& [port]]
   (let [port (Integer. (or port (env :port) 5000))]
     (yada/listener
       ["/"
        [["hello" (yada/handler "Hello World!")]
-        ["initiate" (yada/handler initiate)]
+        ["initiate" (yada/handler initiate-transfer)]
         [true (yada/as-resource nil)]]]
       {:port port})))
 
-; In the repl ... use this for interactive work
+
+; For running in the repl ...
 ; (def srv (-main))
 ; start the server, obtain the map
+;
 ; ((:close srv))
 ; shut it down

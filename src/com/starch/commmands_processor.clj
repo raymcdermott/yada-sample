@@ -1,6 +1,6 @@
-(ns com.starch.api.commands.processor
-  (:require [com.starch.message.pubsub :as ps]
-            [com.starch.data.storage :as ds])
+(ns com.starch.commands-processor
+  (:require [com.starch.pubsub :as ps]
+            [com.starch.data-storage :as ds])
   (:import (java.util UUID Date)))
 
 (def ^:private system-origin {:type "system"})
