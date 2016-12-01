@@ -6,71 +6,43 @@
   (:import (java.util UUID Date)
            (clojure.lang PersistentArrayMap ExceptionInfo)))
 
-; make more functional / reduce boiler plate!!
+(def deadline-millis (Long. (or (env :deadline-millis) 200)))
 
-(def default-timeout 200)
-
-
-; publish on POST (standard lifecycle)
-
-; obtain RESOURCE before 'create response'
-
-(defn process-command
+(defn sync-command-event
   [command resource-locater]
 
   ; publish the command
   (ps/publish-command command)
 
   ; wait for the command to complete / timeout
-  (let [id (:id command)
-        event (ps/command-event-listener
-                id (filter #(= id (get-in % [:origin :id]))) default-timeout)]
+  (ps/await-command-result command resource-locater deadline-millis))
 
-    (condp instance? event
-
-      ; it worked, async publish the initiated event
-      PersistentArrayMap (when-let [resource-id (get-in event [:resource :id])]
-                           (resource-locater resource-id))
-
-      ; fail and provide a diagnostics map
-      ExceptionInfo {:fail (:cause event) :posted-data (:context command) :exception event}
-
-      "process-command - unmatched instance type")))
-
-; can become a map? can be added to yada resource? yes ... and then just fix up the interceptor chain
-; after process-request-body
-
-(defn- process-transfer-command
+(defn- initiate-transfer-command
   [post-data]
-  (let [command (ps/new-transfer-command post-data)]
-    (process-command command ds/lookup-transfer)))
+  (let [command (ps/create-transfer-command post-data)]
+    (sync-command-event command ds/lookup-transfer)))
 
-(defn- transfer-event-source
+(defn- initiate-transfer-event-source
   [ctx]
-  (let [form (get-in ctx [:parameters :form])
+  (let [form (get-in ctx [:parameters :query])
         post-data {:amount          (:amount form)
                    :customer-source (:customer-source form)
                    :customer-target (:customer-target form)}]
-    (process-transfer-command post-data)))
+    (initiate-transfer-command post-data)))
 
-(def ^:private transfer-schema                              ; TODO add spec
+(def ^:private initiate-transfer-schema                              ; TODO integrate with spec
   {:customer-source String
    :customer-target String
    :amount          Double})
 
-(def ^:private transfer-parameters-resource
-  (yada/resource
-    {:methods
-     {
-      :post                                                 ; TODO
-      {:parameters {:form transfer-schema}
-       :produces   "application/json"
-       :response   transfer-event-source}
-      :get
-      {:parameters {:query transfer-schema}
-       :produces   "application/json"
-       :response   transfer-event-source}}
-     }))
+(def ^:private initiate
+  (let [resource-map {:parameters {:query initiate-transfer-schema}
+                      :produces   "application/json"
+                      :response   initiate-transfer-event-source}]
+    (yada/resource
+      {:methods
+       {:post resource-map
+        :get  resource-map}})))
 
 ; so, how to create the resource per request
 (defn -main [& [port]]
@@ -78,7 +50,7 @@
     (yada/listener
       ["/"
        [["hello" (yada/handler "Hello World!")]
-        ["transfer" (yada/handler transfer-parameters-resource)]
+        ["initiate" (yada/handler initiate)]
         [true (yada/as-resource nil)]]]
       {:port port})))
 

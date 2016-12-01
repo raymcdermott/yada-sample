@@ -77,7 +77,7 @@
 ; install a stop channel to enable more interactive control
 
 (def command->function
-  {:create-new-transfer handle-create-transfer})
+  {:create-transfer handle-create-transfer})
 
 (defn transfer-command-processor
   "Dispatch the appropriate processor for the command on the channel"

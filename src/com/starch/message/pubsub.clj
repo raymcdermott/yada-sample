@@ -3,7 +3,10 @@
             [clojure.core.async :refer [<! >! alts!! buffer chan close!
                                         go go-loop mult promise-chan
                                         put! take! timeout tap untap]])
-  (:import (java.util UUID Date)))
+  (:import (java.util UUID Date)
+           (clojure.lang PersistentArrayMap ExceptionInfo)))
+
+(def deadline-millis (Long. (or (env :deadline-millis) 200)))
 
 (def ^:private api-domain "transfers-api.starch.com")
 
@@ -11,13 +14,14 @@
 
 (def ^:private version (UUID/randomUUID))
 
+; TODO - move transfer specific stuff out of here
 ; commands
 
-(defn new-transfer-command
+(defn create-transfer-command
   [post-data]
   {
    :id        (UUID/randomUUID)
-   :command   :create-new-transfer
+   :command   :create-transfer
    :timestamp (new Date)
    :version   version
    :origin    {:type      :api
@@ -82,4 +86,27 @@
 
 (def publish-event (partial publish events-ch))
 (def publish-command (partial publish commands-ch))
+
+; general sync command handler
+(defn await-command-result
+  [command resource-locater timeout-ms]
+
+  ; publish the command
+  (publish-command command)
+
+  ; wait for the command to complete / timeout
+  (let [id (:id command)
+        event (command-event-listener
+                id (filter #(= id (get-in % [:origin :id]))) timeout-ms)]
+
+    (condp instance? event
+
+      ; it worked, async publish the initiated event
+      PersistentArrayMap (when-let [resource-id (get-in event [:resource :id])]
+                           (resource-locater resource-id))
+
+      ; fail and provide a diagnostics map
+      ExceptionInfo {:fail (:cause event) :posted-data (:context command) :exception event}
+
+      "process-command - unmatched instance type")))
 
