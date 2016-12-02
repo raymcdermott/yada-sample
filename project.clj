@@ -6,7 +6,8 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [yada "1.1.43"]
                  [aleph "0.4.1"]
-                 [environ "1.1.0"]]
+                 [environ "1.1.0"]
+                 [com.taoensso/timbre "4.7.4"]]
   :main ^:skip-aot com.starch.api.web
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}}

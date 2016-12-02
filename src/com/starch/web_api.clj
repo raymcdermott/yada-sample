@@ -14,9 +14,12 @@
         resource-keys [:resource :id]]
     (ps/sync-command-with-result command command-keys resource-keys resource-locater deadline-millis)))
 
-(defn- initiate-transfer-command
-  [post-data]
-  (let [command (ps/create-transfer-command post-data)]
+(defn- expire-transfer-event-source
+  [ctx]
+  (let [form (get-in ctx [:parameters :query])
+        transfer-id (UUID/fromString (:transfer-id form))
+        post-data {:transfer-id transfer-id}
+        command (ps/expire-transfer-command post-data)]
     (sync-command-event command ds/lookup-transfer)))
 
 (defn- initiate-transfer-event-source
@@ -24,8 +27,21 @@
   (let [form (get-in ctx [:parameters :query])
         post-data {:amount          (:amount form)
                    :customer-source (:customer-source form)
-                   :customer-target (:customer-target form)}]
-    (initiate-transfer-command post-data)))
+                   :customer-target (:customer-target form)}
+        command (ps/create-transfer-command post-data)]
+    (sync-command-event command ds/lookup-transfer)))
+
+(def ^:private expire-transfer-schema                       ; TODO integrate with spec
+  {:transfer-id String})
+
+(def ^:private expire-transfer
+  (let [resource-method-map {:parameters {:query expire-transfer-schema}
+                             :produces   "application/json"
+                             :response   expire-transfer-event-source}]
+    (yada/resource
+      {:methods
+       {:post resource-method-map
+        :get  resource-method-map}})))
 
 (def ^:private initiate-transfer-schema                     ; TODO integrate with spec
   {:customer-source String
@@ -51,7 +67,7 @@
       ["/"
        [["hello" (yada/handler "Hello World!")]
         ["initiate" (yada/handler initiate-transfer)]
-        [true (yada/as-resource nil)]]]
+        ["expire" (yada/handler expire-transfer)]]]
       {:port port})))
 
 
