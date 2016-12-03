@@ -66,10 +66,8 @@
       (when-let [[command-event ch] (alts!! [command-events-ch stop-commands-ch])]
         (condp = ch
           command-events-ch (do (>! events-ch command-event)
-                                (println "command-listener - Recurring")
                                 (recur))
-          stop-commands-ch (do (untap commands-mult command-events-ch)
-                               (info "Stopping command-listener")))))))
+          stop-commands-ch (untap commands-mult command-events-ch))))))
 
 ; for interactive use
 (defn- stop-command-listener []
@@ -89,9 +87,8 @@
       (untap events-mult predicate-ch)
       (condp = ch
         predicate-ch event
-        timeout-ch (do
-                     (error "Timout in command-event-listener" {:command-id command-id :timeout timeout-ms})
-                     (ex-info "Timout in command-event-listener" {:command-id command-id :timeout timeout-ms}))))))
+        timeout-ch (do (error "Timout in command-event-listener" {:command-id command-id :timeout timeout-ms})
+                       (ex-info "Timout in command-event-listener" {:command-id command-id :timeout timeout-ms}))))))
 
 ; support publishing commands and events
 
