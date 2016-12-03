@@ -75,7 +75,7 @@
 (defn- command-processor
   [command command-processor event]
   (if-let [resource (command-processor command)]
-    (create-event resource event)
+    (ps/publish-event (create-event resource event))
     (ex-info "Failed to process command" {:command command})))
 
 ; First draft of the map; might get larger as we flesh out design

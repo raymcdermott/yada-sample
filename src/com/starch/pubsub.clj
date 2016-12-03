@@ -16,31 +16,31 @@
 ; TODO - move transfer specific stuff out of here
 ; commands
 
-(defn create-transfer-command
-  [post-data]
-  {
-   :id        (UUID/randomUUID)
-   :command   :create-transfer
-   :timestamp (System/currentTimeMillis)
-   :version   version
-   :origin    {:type      :api
-               :requestId (UUID/randomUUID)}                ; TODO - integrate X-Request-Id
-   :context   post-data
-   :resource  {:id   (:customer-source post-data)
-               :href (str api-url "customers/" (:customer-source post-data))}})
 
-(defn expire-transfer-command
-  [post-data]
+(defn command
+  [post-data name resource-id-key resource-path]
   {
    :id        (UUID/randomUUID)
-   :command   :expire-transfer
+   :command   name
    :timestamp (System/currentTimeMillis)
    :version   version
    :origin    {:type      :api
                :requestId (UUID/randomUUID)}                ; TODO - integrate X-Request-Id
    :context   post-data
-   :resource  {:id   (:transfer-id post-data)
-               :href (str api-url "transfers/" (:transfer-id post-data))}})
+   :resource  {:id   (resource-id-key post-data)
+               :href (str api-url resource-path (resource-id-key post-data))}})
+
+(defn create
+  [post-data]
+  (command post-data :create-transfer :customer-source "customers/"))
+
+(defn fail
+  [post-data]
+  (command post-data :fail-transfer :transfer-id "transfers/"))
+
+(defn expire
+  [post-data]
+  (command post-data :expire-transfer :transfer-id "transfers/"))
 
 ; events
 

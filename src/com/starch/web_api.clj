@@ -14,12 +14,20 @@
         resource-keys [:resource :id]]
     (ps/sync-command-with-result command command-keys resource-keys resource-locater deadline-millis)))
 
+(defn- fail-transfer-event-source
+  [ctx]
+  (let [form (get-in ctx [:parameters :query])
+        transfer-id (UUID/fromString (:transfer-id form))
+        post-data {:transfer-id transfer-id}
+        command (ps/fail post-data)]
+    (sync-command-event command ds/lookup-transfer)))
+
 (defn- expire-transfer-event-source
   [ctx]
   (let [form (get-in ctx [:parameters :query])
         transfer-id (UUID/fromString (:transfer-id form))
         post-data {:transfer-id transfer-id}
-        command (ps/expire-transfer-command post-data)]
+        command (ps/expire post-data)]
     (sync-command-event command ds/lookup-transfer)))
 
 (defn- initiate-transfer-event-source
@@ -28,15 +36,27 @@
         post-data {:amount          (:amount form)
                    :customer-source (:customer-source form)
                    :customer-target (:customer-target form)}
-        command (ps/create-transfer-command post-data)]
+        command (ps/create post-data)]
     (sync-command-event command ds/lookup-transfer)))
+
+(def ^:private fail-transfer-schema                       ; TODO integrate with spec
+  {:transfer-id String})
+
+(def ^:private fail-transfer
+  (let [resource-method-map {:parameters {:query fail-transfer-schema}
+                             :produces   "application/json" ; hmmm, who likes a hard coded MIME type? Can keyword??
+                             :response   fail-transfer-event-source}]
+    (yada/resource
+      {:methods
+       {:post resource-method-map
+        :get  resource-method-map}})))
 
 (def ^:private expire-transfer-schema                       ; TODO integrate with spec
   {:transfer-id String})
 
 (def ^:private expire-transfer
   (let [resource-method-map {:parameters {:query expire-transfer-schema}
-                             :produces   "application/json"
+                             :produces   "application/json" ; hmmm, who likes a hard coded MIME type? Can keyword??
                              :response   expire-transfer-event-source}]
     (yada/resource
       {:methods
@@ -50,7 +70,7 @@
 
 (def ^:private initiate-transfer
   (let [resource-method-map {:parameters {:query initiate-transfer-schema}
-                             :produces   "application/json"
+                             :produces   "application/json" ; hmmm, who likes a hard coded MIME type? Can keyword??
                              :response   initiate-transfer-event-source}]
     (yada/resource
       {:methods
@@ -67,7 +87,8 @@
       ["/"
        [["hello" (yada/handler "Hello World!")]
         ["initiate" (yada/handler initiate-transfer)]
-        ["expire" (yada/handler expire-transfer)]]]
+        ["expire" (yada/handler expire-transfer)]
+        ["fail" (yada/handler fail-transfer)]]]
       {:port port})))
 
 
