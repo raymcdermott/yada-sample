@@ -6,77 +6,62 @@
   (:import (java.util UUID Date)
            (clojure.lang PersistentArrayMap ExceptionInfo)))
 
-(def deadline-millis (Long. (or (env :deadline-millis) 200)))
+(def ^:private deadline-millis (Long. (or (env :deadline-millis) 1000)))
 
-(defn sync-command-event
-  [command resource-locater]
-  (let [command-keys [:origin :id]
-        resource-keys [:resource :id]]
-    (ps/sync-command-with-result command command-keys resource-keys resource-locater deadline-millis)))
 
-(defn- fail-transfer-event-source
-  [ctx]
+; Create the Yada event source command operation
+
+(defn- transfer-op
+  [post-op publish-op ctx]
   (let [form (get-in ctx [:parameters :query])
-        transfer-id (UUID/fromString (:transfer-id form))
-        post-data {:transfer-id transfer-id}
-        command (ps/fail post-data)]
-    (sync-command-event command ds/lookup-transfer)))
-
-(defn- expire-transfer-event-source
-  [ctx]
-  (let [form (get-in ctx [:parameters :query])
-        transfer-id (UUID/fromString (:transfer-id form))
-        post-data {:transfer-id transfer-id}
-        command (ps/expire post-data)]
-    (sync-command-event command ds/lookup-transfer)))
-
-(defn- initiate-transfer-event-source
-  [ctx]
-  (let [form (get-in ctx [:parameters :query])
-        post-data {:amount          (:amount form)
-                   :customer-source (:customer-source form)
-                   :customer-target (:customer-target form)}
-        command (ps/create post-data)]
-    (sync-command-event command ds/lookup-transfer)))
-
-(def ^:private fail-transfer-schema                       ; TODO integrate with spec
-  {:transfer-id String})
+        post-data (post-op form)
+        command (publish-op post-data)]
+    (ps/sync-command-with-result command ds/lookup-transfer deadline-millis)))
 
 (def ^:private fail-transfer
-  (let [resource-method-map {:parameters {:query fail-transfer-schema}
-                             :produces   "application/json" ; hmmm, who likes a hard coded MIME type? Can keyword??
-                             :response   fail-transfer-event-source}]
-    (yada/resource
-      {:methods
-       {:post resource-method-map
-        :get  resource-method-map}})))
-
-(def ^:private expire-transfer-schema                       ; TODO integrate with spec
-  {:transfer-id String})
+  (let [post-op (fn [form]
+                  (let [transfer-id (UUID/fromString (:transfer-id form))]
+                    {:transfer-id transfer-id}))]
+    (partial transfer-op post-op ps/fail)))
 
 (def ^:private expire-transfer
-  (let [resource-method-map {:parameters {:query expire-transfer-schema}
-                             :produces   "application/json" ; hmmm, who likes a hard coded MIME type? Can keyword??
-                             :response   expire-transfer-event-source}]
-    (yada/resource
-      {:methods
-       {:post resource-method-map
-        :get  resource-method-map}})))
-
-(def ^:private initiate-transfer-schema                     ; TODO integrate with spec
-  {:customer-source String
-   :customer-target String
-   :amount          Double})
+  (let [post-op (fn [form]
+                  (let [transfer-id (UUID/fromString (:transfer-id form))]
+                    {:transfer-id transfer-id}))]
+    (partial transfer-op post-op ps/expire)))
 
 (def ^:private initiate-transfer
-  (let [resource-method-map {:parameters {:query initiate-transfer-schema}
+  (let [post-op (fn [form] {:amount          (:amount form)
+                            :customer-source (:customer-source form)
+                            :customer-target (:customer-target form)})]
+    (partial transfer-op post-op ps/create)))
+
+
+; Create the Yada resource per route
+
+(defn route-handler
+  [parameter-schema event-source-fn]
+  (let [resource-method-map {:parameters {:query parameter-schema}
                              :produces   "application/json" ; hmmm, who likes a hard coded MIME type? Can keyword??
-                             :response   initiate-transfer-event-source}]
+                             :response   event-source-fn}]
     (yada/resource
       {:methods
        {:post resource-method-map
         :get  resource-method-map}})))
 
+(def ^:private fail                                         ; TODO integrate with spec
+  (let [schema {:transfer-id String}]
+    (route-handler schema fail-transfer)))
+
+(def ^:private expire                                       ; TODO integrate with spec
+  (let [schema {:transfer-id String}]
+    (route-handler schema expire-transfer)))
+
+(def ^:private initiate                                     ; TODO integrate with spec
+  (let [schema {:customer-source String
+                :customer-target String
+                :amount          Double}]
+    (route-handler schema initiate-transfer)))
 
 
 ; For running on servers
@@ -85,10 +70,9 @@
   (let [port (Integer. (or port (env :port) 5000))]
     (yada/listener
       ["/"
-       [["hello" (yada/handler "Hello World!")]
-        ["initiate" (yada/handler initiate-transfer)]
-        ["expire" (yada/handler expire-transfer)]
-        ["fail" (yada/handler fail-transfer)]]]
+       [["initiate" (yada/handler initiate)]
+        ["expire" (yada/handler expire)]
+        ["fail" (yada/handler fail)]]]
       {:port port})))
 
 

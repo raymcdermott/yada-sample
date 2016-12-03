@@ -101,27 +101,30 @@
 ; TODO Add Schema
 (defn sync-command-with-result
   "General sync handler for events that create or update resources"
-  [command command-keys resource-keys resource-locater timeout-ms]
+  [command resource-locater timeout-ms]
 
-  (info "Publishing command id:" (:id command) "with type" (:command command))
+  (let [command-keys [:origin :id]
+        resource-keys [:resource :id]]
 
-  ; publish the command
-  (publish-command command)
+    (info "Publishing command id:" (:id command) "with type" (:command command))
 
-  ; wait for the command to complete / timeout
-  (let [id (:id command)
-        event (command-event-listener
-                id (filter #(= id (get-in % command-keys))) timeout-ms)]
+    ; publish the command
+    (publish-command command)
 
-    (condp instance? event
+    ; wait for the command to complete / timeout
+    (let [id (:id command)
+          event (command-event-listener
+                  id (filter #(= id (get-in % command-keys))) timeout-ms)]
 
-      ; it worked, async publish the resource tagged in the event
-      PersistentArrayMap (do (info "The event produced in reaction to command id:" (:id command) "is" (:event event))
-                             (when-let [resource-id (get-in event resource-keys)]
-                               (resource-locater resource-id)))
+      (condp instance? event
 
-      ; fail and provide a diagnostics map
-      ExceptionInfo {:fail (:cause event) :posted-data (:context command) :exception event}
+        ; it worked, async publish the resource tagged in the event
+        PersistentArrayMap (do (info "The event produced in reaction to command id:" (:id command) "is" (:event event))
+                               (when-let [resource-id (get-in event resource-keys)]
+                                 (resource-locater resource-id)))
 
-      (str "sync-command-with-result FAIL - unmatched instance type: " (type event)))))
+        ; fail and provide a diagnostics map
+        ExceptionInfo {:fail (:cause event) :posted-data (:context command) :exception event}
+
+        (str "sync-command-with-result FAIL - unmatched instance type: " (type event))))))
 
