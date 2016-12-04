@@ -102,6 +102,6 @@
     <orderEntry type="library" name="Leiningen: ring/ring-core:1.4.0" level="project" />
     <orderEntry type="library" name="Leiningen: slingshot:0.12.2" level="project" />
     <orderEntry type="library" name="Leiningen: tigris:0.1.1" level="project" />
-    <orderEntry type="library" name="Leiningen: yada:1.1.43" level="project" />
+    <orderEntry type="library" name="Leiningen: yada:1.1.45" level="project" />
   </component>
 </module>

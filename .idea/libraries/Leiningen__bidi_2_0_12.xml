@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="Leiningen: bidi:2.0.12">
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/bidi/bidi/2.0.12/bidi-2.0.12.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

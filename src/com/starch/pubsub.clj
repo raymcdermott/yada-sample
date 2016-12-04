@@ -1,130 +1,19 @@
 (ns com.starch.pubsub
   (:require [environ.core :refer [env]]
-            [clojure.core.async :refer [<! >! alts!! buffer chan close!
-                                        go go-loop mult promise-chan
-                                        put! take! timeout tap untap]]
+            [clojure.core.async :refer [>! buffer chan mult put!]]
             [taoensso.timbre :as timbre :refer [debug info warn error fatal]])
   (:import (java.util UUID Date)
            (clojure.lang PersistentArrayMap ExceptionInfo)))
 
-(def ^:private api-domain "transfers-api.starch.com")
-
-(def api-url (str "https://" api-domain "/"))
-
-(def ^:private version (UUID/randomUUID))
-
-; TODO - move transfer specific stuff out of here
-; commands
-
-
-(defn command
-  [post-data name resource-id-key resource-path]
-  {
-   :id        (UUID/randomUUID)
-   :command   name
-   :timestamp (System/currentTimeMillis)
-   :version   version
-   :origin    {:type      :api
-               :requestId (UUID/randomUUID)}                ; TODO - integrate X-Request-Id
-   :context   post-data
-   :resource  {:id   (resource-id-key post-data)
-               :href (str api-url resource-path (resource-id-key post-data))}})
-
-(defn create
-  [post-data]
-  (command post-data :create-transfer :customer-source "customers/"))
-
-(defn fail
-  [post-data]
-  (command post-data :fail-transfer :transfer-id "transfers/"))
-
-(defn expire
-  [post-data]
-  (command post-data :expire-transfer :transfer-id "transfers/"))
-
-; events
-
+; TODO connect up to Kafka
 
 ; channels
 
-(def ^:private events-ch (chan (buffer 256)))
+(def events-ch (chan (buffer 256)))
 
-(def ^:private commands-ch (chan (buffer 256)))
+(def commands-ch (chan (buffer 256)))
 
-(def ^:private stop-commands-ch (chan))
-
-
-; support processing commands
-
-(def ^:private commands-mult (mult commands-ch))
-
-(defn command-listener
-  [transformer]
-  (let [command-events-ch (chan (buffer 256) transformer)
-        _ (tap commands-mult command-events-ch)]
-    (go-loop []
-      (when-let [[command-event ch] (alts!! [command-events-ch stop-commands-ch])]
-        (condp = ch
-          command-events-ch (do (>! events-ch command-event)
-                                (recur))
-          stop-commands-ch (untap commands-mult command-events-ch))))))
-
-; for interactive use
-(defn- stop-command-listener []
-  (put! stop-commands-ch :stop))
-
-
-; support finding the event as a result of command
-
-(def ^:private events-mult (mult events-ch))
-
-(defn command-event-listener
-  [command-id predicate timeout-ms]
-  (let [predicate-ch (chan 1 predicate)
-        _ (tap events-mult predicate-ch)
-        timeout-ch (timeout timeout-ms)]
-    (when-let [[event ch] (alts!! [predicate-ch timeout-ch])]
-      (untap events-mult predicate-ch)
-      (condp = ch
-        predicate-ch event
-        timeout-ch (do (error "Timout in command-event-listener" {:command-id command-id :timeout timeout-ms})
-                       (ex-info "Timout in command-event-listener" {:command-id command-id :timeout timeout-ms}))))))
-
-; support publishing commands and events
-
-(defn- publish [ch message]
-  (put! ch message))
-
-(def publish-event (partial publish events-ch))
-(def publish-command (partial publish commands-ch))
-
-; TODO Add Schema
-(defn sync-command-with-result
-  "General sync handler for events that create or update resources"
-  [command resource-locater timeout-ms]
-
-  (let [command-keys [:origin :id]
-        resource-keys [:resource :id]]
-
-    (info "Publishing command id:" (:id command) "with type" (:command command))
-
-    ; publish the command
-    (publish-command command)
-
-    ; wait for the command to complete / timeout
-    (let [id (:id command)
-          event (command-event-listener
-                  id (filter #(= id (get-in % command-keys))) timeout-ms)]
-
-      (condp instance? event
-
-        ; it worked, async publish the resource tagged in the event
-        PersistentArrayMap (do (info "The event produced in reaction to command id:" (:id command) "is" (:event event))
-                               (when-let [resource-id (get-in event resource-keys)]
-                                 (resource-locater resource-id)))
-
-        ; fail and provide a diagnostics map
-        ExceptionInfo {:fail (:cause event) :posted-data (:context command) :exception event}
-
-        (str "sync-command-with-result FAIL - unmatched instance type: " (type event))))))
+; only have one each of these; multiple causes issues
+(def commands-mult (mult commands-ch))
+(def events-mult (mult events-ch))
 
