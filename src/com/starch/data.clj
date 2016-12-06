@@ -2,12 +2,14 @@
   (:require [com.starch.storage :as ds])
   (:import (java.util UUID)))
 
-; TODO integrate the environment
-(def ^:private commit-hash (UUID/randomUUID))
 
 ; TODO remove this hard coding and use the env
-(def ^:private api-domain "transfers-api.starch.com")
-(def ^:private api-url (str "https://" api-domain "/"))
+(defonce ^:private commit-hash (UUID/randomUUID))
+
+
+; TODO remove this hard coding and use the env
+(defonce ^:private api-domain "transfers-api.starch.com")
+(defonce ^:private api-url (str "https://" api-domain "/"))
 
 
 ; create a transfer resource, store it
@@ -36,7 +38,7 @@
     (ds/store-transfer! transfer-resource)))
 
 
-(defn update-transfer
+(defn- update-transfer
   [command update-keys update-val]
   (let [transfer-id (get-in command [:context :transfer-id])]
     (if-let [transfer (ds/lookup-transfer transfer-id)]

@@ -1,22 +1,19 @@
 (ns com.starch.api
   (:require [yada.yada :as yada]
             [environ.core :refer [env]]
-            [com.starch.pubsub :as ps]
+            [com.starch.listen :as listen]
             [com.starch.commands :as cmd]
-            [com.starch.storage :as ds]
-            [com.starch.processor :as proc])
+            [com.starch.storage :as ds])
   (:import (java.util UUID Date)
            (clojure.lang PersistentArrayMap ExceptionInfo)))
 
-
 ; TODO remove this hard coding and use the env
-(def ^:private api-domain "transfers-api.starch.com")
-(def ^:private api-url (str "https://" api-domain "/"))
+(defonce ^:private api-domain "transfers-api.starch.com")
+(defonce ^:private api-url (str "https://" api-domain "/"))
 
 
 ; Environment configuration
-
-(def ^:private deadline-millis (Long. (or (env :deadline-millis) 1000)))
+(defonce ^:private deadline-millis (Long. (or (env :deadline-millis) 1000)))
 
 
 ; Create the Yada event source command operation
@@ -26,7 +23,7 @@
   (let [form (get-in ctx [:parameters :query])
         post-data (mapper form)
         command (publish-op post-data api-url)]
-    (proc/sync-command-with-result command ds/lookup-transfer deadline-millis)))
+    (listen/sync-command-with-result command ds/lookup-transfer deadline-millis)))
 
 (def ^:private fail-command
   (let [mapper (fn
@@ -49,6 +46,7 @@
                   :customer-source (:customer-source form)
                   :customer-target (:customer-target form)})]
     (partial sync-command mapper cmd/create)))
+
 
 
 ; Create the Yada resource per route
@@ -78,13 +76,15 @@
     (resource schema initiate-command)))
 
 
+
 ; For running on servers
 
 (defn -main [& [port]]
   (let [port (Integer. (or port (env :port) 5000))]
     (yada/listener
       ["/"
-       [["initiate" (yada/handler initiate)]
+       [["hello" (yada/handler "Hello World!")]
+        ["initiate" (yada/handler initiate)]
         ["expire" (yada/handler expire)]
         ["fail" (yada/handler fail)]]]
       {:port port})))

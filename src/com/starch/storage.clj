@@ -1,5 +1,7 @@
 (ns com.starch.storage)
 
+; TODO replace with Datomic
+
 (def ^:private resource-db (atom #{}))
 
 (defn store-transfer!
