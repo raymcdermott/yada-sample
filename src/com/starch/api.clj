@@ -7,12 +7,11 @@
   (:import (java.util UUID Date)
            (clojure.lang PersistentArrayMap ExceptionInfo)))
 
-; TODO remove this hard coding and use the env
-(defonce ^:private api-domain "transfers-api.starch.com")
+
+; Environment injected configurations
+(defonce ^:private api-domain (or (env :api-domain) "transfers-api.starch.com"))
 (defonce ^:private api-url (str "https://" api-domain "/"))
 
-
-; Environment configuration
 (defonce ^:private deadline-millis (Long. (or (env :deadline-millis) 1000)))
 
 

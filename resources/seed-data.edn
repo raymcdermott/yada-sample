@@ -1,0 +1,32 @@
+[
+ {:db/id               #db/id [:db.part/user -1]
+  :customer/id         #uuid"b27a388d-d693-4d67-89ed-7f75c45bd2d1"
+  :customer/first-name "John"
+  :customer/last-name  "Doe"
+  :customer/birth-date #inst"1992-01-24"
+  :customer/email      "john@doe.com"
+  }
+
+ {:db/id               #db/id [:db.part/user -2]
+  :customer/id         #uuid"40624f00-a637-46a8-8142-7489b1a15ff5"
+  :customer/first-name "Jane"
+  :customer/last-name  "Doe"
+  :customer/birth-date #inst"1997-03-17"
+  :customer/email      "jane@doe.com"
+  }
+
+ {:db/id                    #db/id [:db.part/user -3]
+  :transfer/id              #uuid"015fcd7e-05a6-4c22-9a3c-da3c3c200493"
+  :transfer/source-customer #uuid"b27a388d-d693-4d67-89ed-7f75c45bd2d1"
+  :transfer/target-customer #uuid"40624f00-a637-46a8-8142-7489b1a15ff5"
+  :transfer/amount          123.45
+  }
+
+ {:db/id                    #db/id [:db.part/user -4]
+  :transfer/id              #uuid"938eadfd-6a1e-4e71-8da8-55f9fd07d23c"
+  :transfer/source-customer #uuid"40624f00-a637-46a8-8142-7489b1a15ff5"
+  :transfer/target-customer #uuid"b27a388d-d693-4d67-89ed-7f75c45bd2d1"
+  :transfer/amount          453.21
+  }
+
+ ]

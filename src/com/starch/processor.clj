@@ -3,14 +3,16 @@
             [com.starch.listen :as listen]
             [com.starch.storage :as ds]
             [com.starch.data :as data]
+            [environ.core :refer [env]]
             [taoensso.timbre :as timbre :refer [debug info warn error fatal]])
   (:import (java.util UUID Date)))
 
-; TODO remove this hard coding and use the env
-(defonce ^:private api-domain "transfers-api.starch.com")
-(defonce ^:private api-url (str "https://" api-domain "/"))
-(defonce ^:private commit-hash (UUID/randomUUID))
+; Environment injected configurations
+(defonce ^:private commit-hash (or (env :commit-hash)
+                                   (throw (Exception. "Cannot start without knowing the code version"))))
 
+(defonce ^:private api-domain (or (env :api-domain) "transfers-api.starch.com"))
+(defonce ^:private api-url (str "https://" api-domain "/"))
 
 (defn- create-event
   [resource event]
@@ -46,6 +48,7 @@
 (defn command-channel-processor
   "Dispatch the appropriate processor for the command on the channel"
   [command-processor-map]
+  (info "Starting")
   (listen/command-listener (map (fn [command]
                                   (if-let [map-entry (get command-processor-map (:command command))]
                                     (command-processor command (:fn map-entry) (:event map-entry))

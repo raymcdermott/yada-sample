@@ -1,8 +1,10 @@
 (ns com.starch.commands
+  (:require [environ.core :refer [env]])
   (:import (java.util UUID)))
 
-; TODO remove this hard coding and use the env
-(defonce ^:private commit-hash (UUID/randomUUID))
+; Environment injected configurations
+(defonce ^:private commit-hash (or (env :commit-hash)
+                                   (throw (Exception. "Cannot start without knowing the code version"))))
 
 (defn command
   [post-data name resource-id-key resource-path]
