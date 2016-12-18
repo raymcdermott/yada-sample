@@ -1,7 +1,7 @@
 (ns com.starch.data
   (:require [environ.core :refer [env]]
             [com.starch.storage :as ds])
-  (:import (java.util UUID)))
+  (:import (java.util UUID Date)))
 
 ; Environment injected configurations
 (defonce ^:private commit-hash (or (env :commit-hash)
@@ -11,6 +11,7 @@
 (defonce ^:private api-url (str "https://" api-domain "/"))
 
 (defn transfer-resource
+  "Create a JSON style resource"
   [transfer-data]
   {:id            (:id transfer-data)
    :time-stamp    (:time-stamp transfer-data)
@@ -27,42 +28,41 @@
                    :id   (:command-id transfer-data)
                    :href (str api-url "commands/" (:command-id transfer-data))}})
 
-; create a transfer resource, store it
 (defn create-transfer
   [command]
-  (let [command-id (:id command)
+  (let [conn (ds/get-conn)
+        command-id (:id command)
         amount (get-in command [:context :amount])
         source (get-in command [:context :customer-source])
         target (get-in command [:context :customer-target])
         transfer-data {:id              (UUID/randomUUID)
-                       :time-stamp      (System/currentTimeMillis)
+                       :time-stamp      (new Date)
                        :version         commit-hash
                        :amount          amount
                        :customer-source source
                        :customer-target target
-                       :command-id      command-id}]        ; TODO fix schema to include these properties
-    (ds/store-transfer! (transfer-resource transfer-data))))
-
+                       :command-id      command-id}]
+    (when (ds/store-transfer! transfer-data)
+      (transfer-resource transfer-data))))
 
 (defn- update-transfer
-  [command update-keys update-val]
-  (let [transfer-id (get-in command [:context :transfer-id])]
-    (if-let [transfer (ds/lookup-transfer transfer-id)]
+  [command new-data]
+  (let [transfer (ds/lookup-transfer (get-in command [:context :transfer-id]))]
+    (if-not transfer
+      (ex-info "Cannot find transfer to update" {:command command})
       (let [command-id (:id command)
-            updated-attributes (assoc-in transfer update-keys update-val)
-            updated-meta-data {:time-stamp (System/currentTimeMillis)
-                               :version    commit-hash
-                               :origin     {:type :command
-                                            :id   command-id
-                                            :href (str api-url "commands/" command-id)}}] ; hmmm, who likes a hard coded path??
-        (ds/store-transfer! (merge updated-attributes updated-meta-data)))
-      (ex-info "Cannot find transfer to update" {:command command}))))
+            updated-transfer (merge transfer new-data
+                                    {:command-id command-id
+                                     :time-stamp (new Date)
+                                     :version    commit-hash})]
+        (when (ds/store-transfer! updated-transfer)
+          (transfer-resource updated-transfer))))))
 
 (defn expire-transfer
   [command]
-  (update-transfer command [:attributes :expired] true))
+  (update-transfer command {:expired true}))
 
 (defn fail-transfer
   [command]
-  (update-transfer command [:attributes :failed] true))
+  (update-transfer command {:failed true}))
 

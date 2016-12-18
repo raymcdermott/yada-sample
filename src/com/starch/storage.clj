@@ -8,22 +8,28 @@
 (d/delete-database db-uri)
 (d/create-database db-uri)
 
-(def conn (d/connect db-uri))
+(defn get-conn
+  ([]                                                       ; TODO - drop 0 arity, others must provide URI
+   (d/connect db-uri))
+  ([uri]
+   (d/connect uri)))
+
+(def ^:private seed-conn (get-conn db-uri))
 
 ; TODO move this into tests
 ;; parse schema edn file
 (def schema-tx (read-string (slurp (io/resource "schema.edn"))))
 
-@(d/transact conn schema-tx)
+@(d/transact seed-conn schema-tx)
 
 ;; parse seed data edn file
 (def data-tx (read-string (slurp (io/resource "seed-data.edn"))))
 
 ;; submit seed data transaction
-@(d/transact conn data-tx)
+@(d/transact seed-conn data-tx)
 
 ; TODO Query!
-(def db (d/db conn))
+(def db (d/db seed-conn))
 
 ; All customers
 (println "All customers")
@@ -73,21 +79,39 @@
          [?cust-to :customer/first-name ?first-to]
          ] db "John"))
 
-;; TODO - txn metadata
-{:db/id      (d/tempid :db.part/tx)
- :version    commit-hash
- :command/id command-id}
+; One transfer
+(def xfer-id (d/entity db [:transfer/id #uuid"938eadfd-6a1e-4e71-8da8-55f9fd07d23c"]))
+(clojure.pprint/pprint
+  (d/pull db '[*] (:db/id xfer-id)))
 
-(defn store-in-datomic
-  [transfer]
-  (let [txn-data [{:db/id                    (d/tempid :db.part/user)
+
+(defn store-in-datomic!
+  "Add the data and return the transaction result"          ; TODO make the return value more friendly
+  [conn transfer]
+  (let [txn-data [{:db/id                    (or (:db/id transfer) (d/tempid :db.part/user))
                    :transfer/id              (:id transfer)
+                   :transfer/time-stamp      (:time-stamp transfer)
                    :transfer/source-customer (:source-customer transfer)
                    :transfer/target-customer (:target-customer transfer)
-                   :transfer/amount          (:amount transfer)}]
-        ]
-    @(d/transact conn txn-data)))
+                   :transfer/amount          (:amount transfer)
+                   :transfer/expired         (or (:expired transfer) false)
+                   :transfer/failed          (or (:failed transfer) false)
+                   :code/version             (:version transfer)
+                   :command/id               (:command-id transfer)}]]
+    (when @(d/transact conn txn-data)
+      transfer)))
 
+(defn lookup-in-datomic
+  [conn transfer-id]
+  (let [db (d/db conn)]
+    (when-let [entity (d/entity db [:transfer/id transfer-id])]
+      (d/pull db '[*] (:db/id entity)))))
+
+(defn update-in-datomic!
+  [conn transfer]
+  (when-let [found (lookup-in-datomic conn (:id transfer))]
+    (let [merged (merge found transfer)]
+      (store-in-datomic! conn merged))))
 
 (def ^:private resource-db (atom #{}))
 

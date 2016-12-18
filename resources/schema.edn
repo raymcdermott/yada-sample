@@ -8,6 +8,12 @@
   :db.install/_attribute :db.part/db}
 
  {:db/id                 #db/id[:db.part/db]
+  :db/ident              :transfer/time-stamp
+  :db/valueType          :db.type/instant
+  :db/cardinality        :db.cardinality/one
+  :db.install/_attribute :db.part/db}
+
+ {:db/id                 #db/id[:db.part/db]
   :db/ident              :transfer/amount
   :db/valueType          :db.type/double
   :db/cardinality        :db.cardinality/one
@@ -22,6 +28,18 @@
  {:db/id                 #db/id[:db.part/db]
   :db/ident              :transfer/target-customer
   :db/valueType          :db.type/uuid
+  :db/cardinality        :db.cardinality/one
+  :db.install/_attribute :db.part/db}
+
+ {:db/id                 #db/id[:db.part/db]
+  :db/ident              :transfer/expired
+  :db/valueType          :db.type/boolean
+  :db/cardinality        :db.cardinality/one
+  :db.install/_attribute :db.part/db}
+
+ {:db/id                 #db/id[:db.part/db]
+  :db/ident              :transfer/failed
+  :db/valueType          :db.type/boolean
   :db/cardinality        :db.cardinality/one
   :db.install/_attribute :db.part/db}
 
@@ -54,6 +72,19 @@
  {:db/id                 #db/id[:db.part/db]
   :db/ident              :customer/email
   :db/valueType          :db.type/string
+  :db/cardinality        :db.cardinality/one
+  :db.install/_attribute :db.part/db}
+
+ ; Transaction metadata - command id and source code version
+ {:db/id                 #db/id[:db.part/db]
+  :db/ident              :command/id
+  :db/valueType          :db.type/uuid
+  :db/cardinality        :db.cardinality/one
+  :db.install/_attribute :db.part/db}
+
+ {:db/id                 #db/id[:db.part/db]
+  :db/ident              :code/version
+  :db/valueType          :db.type/uuid
   :db/cardinality        :db.cardinality/one
   :db.install/_attribute :db.part/db}
 
