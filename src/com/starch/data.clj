@@ -10,6 +10,9 @@
 (defonce ^:private api-domain (or (env :api-domain) "transfers-api.starch.com"))
 (defonce ^:private api-url (str "https://" api-domain "/"))
 
+(defonce ^:private db-uri (or (env :datomic-uri) "datomic:mem:/transfers"))
+
+
 (defn transfer-resource
   "Create a JSON style resource"
   [transfer-data]

@@ -3,101 +3,49 @@
             [datomic.api :as d]
             [clojure.java.io :as io]))
 
-(defonce ^:private db-uri (or (env :datomic-uri) "datomic:mem:/transfers"))
-
-(d/delete-database db-uri)
-(d/create-database db-uri)
-
 (defn get-conn
-  ([]                                                       ; TODO - drop 0 arity, others must provide URI
-   (d/connect db-uri))
-  ([uri]
-   (d/connect uri)))
+  [uri]
+  (d/connect uri))
 
-(def ^:private seed-conn (get-conn db-uri))
+;----------> Code
 
-; TODO move this into tests
-;; parse schema edn file
-(def schema-tx (read-string (slurp (io/resource "schema.edn"))))
+; TODO take this out of here once we get beyond transfers
 
-@(d/transact seed-conn schema-tx)
+; TODO spec the shape of this data - second arg of vector is tricky as must be dynamic
+; TODO specifically, integrate a lookup in Datomic for the possible values of each entity
+; TODO it can take a function that produces such a value or a value of that type
 
-;; parse seed data edn file
-(def data-tx (read-string (slurp (io/resource "seed-data.edn"))))
+(def transfer<->datomic
+  "Datomic schema name and either a keyword or a two value list (key and some other thing)"
+  {:db/id                    [:db/id (d/tempid :db.part/user)]
+   :transfer/id              :id
+   :transfer/time-stamp      :time-stamp
+   :transfer/source-customer :source-customer
+   :transfer/target-customer :target-customer
+   :transfer/amount          :amount
+   :transfer/expired         [:expired false]
+   :transfer/failed          [:failed false]
+   :code/version             :version
+   :command/id               :command-id})
 
-;; submit seed data transaction
-@(d/transact seed-conn data-tx)
+(defn m->d [map<->datomic t]
+  (into {} (map #(let [val (% map<->datomic)]
+                   (if (keyword? val)
+                     [% (val t)]
+                     [% (or ((first val) t) (second val))]))
+                (keys map<->datomic))))
 
-; TODO Query!
-(def db (d/db seed-conn))
-
-; All customers
-(println "All customers")
-(clojure.pprint/pprint
-  (d/q '[:find ?id ?first ?last
-         :where
-         [?cust :customer/id ?id]
-         [?cust :customer/first-name ?first]
-         [?cust :customer/last-name ?last]] db))
-
-; A specific customer
-(println "Customer Jane")
-(clojure.pprint/pprint
-  (d/q '[:find [?id ?first ?last]
-         :in $ ?first
-         :where
-         [?cust :customer/id ?id]
-         [?cust :customer/first-name ?first]
-         [?cust :customer/last-name ?last]] db "Jane"))
-
-; All transfers
-(println "All transfers")
-(clojure.pprint/pprint
-  (d/q '[:find ?first-from ?first-to ?amount
-         :where
-         [?xfer :transfer/source-customer ?src]
-         [?xfer :transfer/target-customer ?to]
-         [?xfer :transfer/amount ?amount]
-         [?cust-from :customer/id ?src]
-         [?cust-from :customer/first-name ?first-from]
-         [?cust-to :customer/id ?to]
-         [?cust-to :customer/first-name ?first-to]
-         ] db))
-
-; All transfers for one customer
-(println "All John's transfers")
-(clojure.pprint/pprint
-  (d/q '[:find ?first ?first-to ?amount
-         :in $ ?first
-         :where
-         [?xfer :transfer/source-customer ?src]
-         [?xfer :transfer/target-customer ?to]
-         [?xfer :transfer/amount ?amount]
-         [?cust-from :customer/id ?src]
-         [?cust-from :customer/first-name ?first]
-         [?cust-to :customer/id ?to]
-         [?cust-to :customer/first-name ?first-to]
-         ] db "John"))
-
-; One transfer
-(def xfer-id (d/entity db [:transfer/id #uuid"938eadfd-6a1e-4e71-8da8-55f9fd07d23c"]))
-(clojure.pprint/pprint
-  (d/pull db '[*] (:db/id xfer-id)))
-
+(defn d->m [map<->datomic d]
+  (into {} (map #(let [val (% map<->datomic)]
+                   (if (keyword? val)
+                     [val (% d)]
+                     [(first val) (% d)]))
+                (keys map<->datomic))))
 
 (defn store-in-datomic!
-  "Add the data and return the transaction result"          ; TODO make the return value more friendly
+  "Add the data and return the transaction result"
   [conn transfer]
-  (let [txn-data [{:db/id                    (or (:db/id transfer) (d/tempid :db.part/user))
-                   :transfer/id              (:id transfer)
-                   :transfer/time-stamp      (:time-stamp transfer)
-                   :transfer/source-customer (:source-customer transfer)
-                   :transfer/target-customer (:target-customer transfer)
-                   :transfer/amount          (:amount transfer)
-                   :transfer/expired         (or (:expired transfer) false)
-                   :transfer/failed          (or (:failed transfer) false)
-                   :code/version             (:version transfer)
-                   :command/id               (:command-id transfer)}]]
+  (let [txn-data (vec (m->d transfer<->datomic transfer))]
     (when @(d/transact conn txn-data)
       transfer)))
 
@@ -105,7 +53,7 @@
   [conn transfer-id]
   (let [db (d/db conn)]
     (when-let [entity (d/entity db [:transfer/id transfer-id])]
-      (d/pull db '[*] (:db/id entity)))))
+      (d->m transfer<->datomic (d/pull db '[*] (:db/id entity))))))
 
 (defn update-in-datomic!
   [conn transfer]

@@ -70,3 +70,78 @@
 (deftest fail
   (testing
     (client-post (str test-base-url "/fail"))))
+
+;; TODO move this into tests
+;
+;(def ^:private seed-conn (get-conn db-uri))
+;
+;(d/delete-database db-uri)
+;(d/create-database db-uri)
+;
+;;; parse schema edn file
+;(def schema-tx (read-string (slurp (io/resource "schema.edn"))))
+;
+;@(d/transact seed-conn schema-tx)
+;
+;;; parse seed data edn file
+;(def data-tx (read-string (slurp (io/resource "seed-data.edn"))))
+;
+;;; submit seed data transaction
+;@(d/transact seed-conn data-tx)
+;
+;; TODO Query!
+;(def db (d/db seed-conn))
+;
+;; All customers
+;(println "All customers")
+;(clojure.pprint/pprint
+;  (d/q '[:find ?id ?first ?last
+;         :where
+;         [?cust :customer/id ?id]
+;         [?cust :customer/first-name ?first]
+;         [?cust :customer/last-name ?last]] db))
+;
+;; A specific customer
+;(println "Customer Jane")
+;(clojure.pprint/pprint
+;  (d/q '[:find [?id ?first ?last]
+;         :in $ ?first
+;         :where
+;         [?cust :customer/id ?id]
+;         [?cust :customer/first-name ?first]
+;         [?cust :customer/last-name ?last]] db "Jane"))
+;
+;; All transfers
+;(println "All transfers")
+;(clojure.pprint/pprint
+;  (d/q '[:find ?first-from ?first-to ?amount
+;         :where
+;         [?xfer :transfer/source-customer ?src]
+;         [?xfer :transfer/target-customer ?to]
+;         [?xfer :transfer/amount ?amount]
+;         [?cust-from :customer/id ?src]
+;         [?cust-from :customer/first-name ?first-from]
+;         [?cust-to :customer/id ?to]
+;         [?cust-to :customer/first-name ?first-to]
+;         ] db))
+;
+;; All transfers for one customer
+;(println "All John's transfers")
+;(clojure.pprint/pprint
+;  (d/q '[:find ?first ?first-to ?amount
+;         :in $ ?first
+;         :where
+;         [?xfer :transfer/source-customer ?src]
+;         [?xfer :transfer/target-customer ?to]
+;         [?xfer :transfer/amount ?amount]
+;         [?cust-from :customer/id ?src]
+;         [?cust-from :customer/first-name ?first]
+;         [?cust-to :customer/id ?to]
+;         [?cust-to :customer/first-name ?first-to]
+;         ] db "John"))
+;
+;; One transfer
+;(def xfer-id (d/entity db [:transfer/id #uuid"938eadfd-6a1e-4e71-8da8-55f9fd07d23c"]))
+;(clojure.pprint/pprint
+;  (d/pull db '[*] (:db/id xfer-id)))
+;
