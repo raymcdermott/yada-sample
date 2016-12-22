@@ -15,7 +15,7 @@
 ; TODO specifically, integrate a lookup in Datomic for the possible values of each entity
 ; TODO it can take a function that produces such a value or a value of that type
 
-(def transfer<->datomic
+(def transfer-mapping
   "Datomic schema name and either a keyword or a two value list (key and some other thing)"
   {:db/id                    [:db/id (d/tempid :db.part/user)]
    :transfer/id              :id
@@ -28,24 +28,26 @@
    :code/version             :version
    :command/id               :command-id})
 
-(defn m->d [map<->datomic t]
-  (into {} (map #(let [val (% map<->datomic)]
+(defn m->d [mapping src]
+  "Associate data from a source map into a Datomic schema using the provided mapping"
+  (into {} (map #(let [val (% mapping)]
                    (if (keyword? val)
-                     [% (val t)]
-                     [% (or ((first val) t) (second val))]))
-                (keys map<->datomic))))
+                     [% (val src)]
+                     [% (or ((first val) src) (second val))]))
+                (keys mapping))))
 
-(defn d->m [map<->datomic d]
-  (into {} (map #(let [val (% map<->datomic)]
+(defn d->m [mapping result]
+  "Associate a single Datomic query result into a map using the provided mapping"
+  (into {} (map #(let [val (% mapping)]
                    (if (keyword? val)
-                     [val (% d)]
-                     [(first val) (% d)]))
-                (keys map<->datomic))))
+                     [val (% result)]
+                     [(first val) (% result)]))
+                (keys mapping))))
 
 (defn store-in-datomic!
   "Add the data and return the transaction result"
   [conn transfer]
-  (let [txn-data (vec (m->d transfer<->datomic transfer))]
+  (let [txn-data (vec (m->d transfer-mapping transfer))]
     (when @(d/transact conn txn-data)
       transfer)))
 
@@ -53,7 +55,7 @@
   [conn transfer-id]
   (let [db (d/db conn)]
     (when-let [entity (d/entity db [:transfer/id transfer-id])]
-      (d->m transfer<->datomic (d/pull db '[*] (:db/id entity))))))
+      (d->m transfer-mapping (d/pull db '[*] (:db/id entity))))))
 
 (defn update-in-datomic!
   [conn transfer]
